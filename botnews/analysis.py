@@ -50,6 +50,8 @@ def validate_analysis(data, original):
     for key in ('novelty', 'impact', 'evidence'):
         if type(data[key]) not in (int, float) or not 0 <= data[key] <= 1:
             raise ValueError(f'Invalid {key}')
+    if data.get('unknown') == '':
+        data['unknown'] = 'Дополнительная независимая проверка не выполнена.'
     for key in ('title', 'summary', 'importance', 'unknown', 'event_key'):
         if not isinstance(data[key], str) or not data[key].strip():
             raise ValueError(f'Empty {key}')
@@ -67,6 +69,15 @@ def validate_analysis(data, original):
             datetime.fromisoformat(data['event_date'])
         except (ValueError, TypeError):
             raise ValueError('Invalid event date')
+    for key in ('title', 'summary', 'importance', 'unknown'):
+        if not re.search('[А-Яа-яЁё]', data[key]):
+            raise ValueError(f'{key} must be written in Russian')
+    if any(not re.search('[А-Яа-яЁё]', fact['fact']) for fact in data['confirmed']):
+        raise ValueError('Fact paraphrases must be written in Russian')
+    if re.search(r'neverlose', original, re.I):
+        for field in ('title', 'summary'):
+            if not re.search(r'neverlose|неверлуз', data[field], re.I):
+                raise ValueError('Neverlose project attribution must be preserved')
     if similarity(data['summary'], original) > .82:
         raise ValueError('Summary copies the original instead of paraphrasing')
     return data
@@ -86,18 +97,28 @@ sensitive_claim=true для обходов, уязвимостей, взломо
 Ответ строго JSON: relevant:boolean, substantial:boolean, category: одна из anti_cheat/exploit/research/
 project_update/community/cs2_infrastructure, title:string, summary:string (2–4 коротких предложения),
 importance:string (почему важно, предположения обозначить), confirmed:[{fact:string,quote:string}],
-unknown:string, novelty:0..1, impact:0..1, evidence:0..1, confidence:low/medium/high,
-event_key:string, event_date:string|null, sensitive_claim:boolean.'''
+unknown:непустая строка (если неопределённость не описана — укажи, что независимая проверка не выполнена),
+novelty:0..1, impact:0..1, evidence:0..1, confidence:low/medium/high,
+event_key:string, event_date:string|null, sensitive_claim:boolean.
+
+MANDATORY OUTPUT LANGUAGE: RUSSIAN (ru). Regardless of the source language, write title, summary,
+importance, unknown and EVERY confirmed.fact in Russian with Cyrillic text. Keep confirmed.quote
+in the original source language, copied exactly. Keep JSON keys/category/event_key in English.
+Never copy an English headline as the title: translate and paraphrase it. Describe announcements
+as claims by their author; do not call a cheat feature a new official gameplay mechanic.
+PROJECT ATTRIBUTION: A CS2 Product Update signed by Neverlose Team is an update of the Neverlose
+cheat product, NOT an update of the CS2 game by Valve. Mention Neverlose in BOTH title and summary
+when that is the project in the source. Explain changes as the developer's claims, not verified behavior.'''
 
 class Analyzer:
     def __init__(self, store, session, config):
         self.store, self.session, self.config = store, session, config
 
     async def semantic(self, post):
-        key = hashlib.sha256(('v1:' + self.config.model + ':' + post['body']).encode()).hexdigest()
+        key = hashlib.sha256(('v3:' + self.config.model + ':' + post['body']).encode()).hexdigest()
         cached = self.store.rows('SELECT value FROM cache WHERE key=?', (key,))
         if cached:
-            return json.loads(cached[0]['value']), False
+            return validate_analysis(json.loads(cached[0]['value']), post['body']), False
         import os
         base = os.getenv('LLM_BASE_URL', 'https://api.openai.com/v1').rstrip('/')
         if not base.startswith('https://'):
@@ -106,7 +127,7 @@ class Analyzer:
             headers={'Authorization': 'Bearer ' + self.config.api_key},
             json={'model': self.config.model, 'temperature': .1, 'response_format': {'type': 'json_object'},
                   'messages': [{'role': 'system', 'content': SYSTEM},
-                               {'role': 'user', 'content': json.dumps({'title': post['title'], 'body': post['body'][:18000]}, ensure_ascii=False)}],
+                               {'role': 'user', 'content': json.dumps({'required_output_language':'Russian (ru), use Cyrillic in all reader-facing fields', 'title': post['title'], 'body': post['body'][:18000]}, ensure_ascii=False)}],
                   'max_tokens': 1800}) as resp:
             resp.raise_for_status()
             payload = await resp.json()

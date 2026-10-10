@@ -63,6 +63,11 @@ def test_grounding_and_paraphrase():
         validate_analysis(data(), 'Unrelated source')
     with pytest.raises(ValueError):
         validate_analysis(data(summary='CS2 protocol architecture research'), 'CS2 protocol architecture research')
+    assert 'проверка' in validate_analysis(data(unknown=''), 'CS2 protocol architecture research')['unknown']
+    with pytest.raises(ValueError, match='Russian'):
+        validate_analysis(data(summary='The project announced a protocol change.'), 'CS2 protocol architecture research')
+    with pytest.raises(ValueError, match='attribution'):
+        validate_analysis(data(), 'Neverlose CS2 protocol architecture research')
 
 def test_score_caps(store):
     config = SimpleNamespace(max_age=72)

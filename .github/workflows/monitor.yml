@@ -25,7 +25,7 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
       TELEGRAM_THREAD_ID: ${{ vars.TELEGRAM_THREAD_ID }}
       OPENAI_API_KEY: ${{ secrets.LLM_API_KEY }}
-      OPENAI_MODEL: ${{ vars.LLM_MODEL || 'llama-3.3-70b-versatile' }}
+      OPENAI_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-oss-120b' }}
       LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.groq.com/openai/v1' }}
       MAX_LLM_PER_CYCLE: '10'
       MODE: high_signal
