@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "hvh-news-monitor"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["aiohttp>=3.10,<4", "beautifulsoup4>=4.12,<5", "discord.py>=2.4,<3", "python-dotenv>=1,<2"]
+dependencies = ["aiohttp>=3.10,<4", "beautifulsoup4>=4.12,<5", "discord.py>=2.4,<3", "python-dotenv>=1,<2", "tzdata>=2025.2"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]

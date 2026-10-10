@@ -10,7 +10,7 @@ TOPIC = re.compile(r'\b(cs2|counter.strike|hvh|vac(?:net|live)?|neverlose|gamese
 TECH = re.compile(r'exploit|vulnerab|research|architecture|protocol|regression|crash|detect(?:ion|ed)|source.code|reverse|netcode|prediction|desync|resolver|compatib|double.precision|vacnet|уязвим|исследован|архитектур|протокол|детект|совместим|исходн|регресси|предикт|эксплойт|обход|байпас|баны|бан[ -]?волн', re.I)
 NOISE = re.compile(r'promo.code|giveaway|discount|referral|промокод|розыгрыш|скидк|реферал|купить|buy.now|\bcfg\b|\bconfig(?:s)?\b|конфиг|highlights|фрагмуви|\bmontage\b', re.I)
 CLAIM = re.compile(r'vac.bypass|undetect|zero.day|0.day|обход.*vac|недетект|слив|leak|compromis|взлом', re.I)
-CATEGORIES = {'anti_cheat', 'exploit', 'research', 'project_update', 'community', 'cs2_infrastructure'}
+CATEGORIES = {'anti_cheat', 'exploit', 'research', 'project_update', 'community', 'cs2_infrastructure', 'cs2_update'}
 REASONS = {'advertising', 'config', 'paste', 'duplicate', 'unconfirmed', 'low_significance', 'other'}
 
 def prefilter(text):
@@ -110,12 +110,32 @@ PROJECT ATTRIBUTION: A CS2 Product Update signed by Neverlose Team is an update 
 cheat product, NOT an update of the CS2 game by Valve. Mention Neverlose in BOTH title and summary
 when that is the project in the source. Explain changes as the developer's claims, not verified behavior.'''
 
+OFFICIAL_SYSTEM = '''
+OVERRIDE FOR THIS INPUT: This is an OFFICIAL Valve CS2 GAME PATCH NOTE from Steam app 730.
+The user wants EVERY official game update, including small fixes, unrelated to HvH.
+Do not reject this patch as insignificant or off topic. relevant=true, substantial=true,
+category=cs2_update. Write a short RUSSIAN title and 2-3 sentence summary. Translate accurately
+without changing numbers, weapon names, direction of increases/decreases or units.
+confirmed must contain 1-8 concise Russian change bullets, each with an exact original quote.
+Say explicitly that these are changes announced by Valve. importance should explain practical
+effects only when supported by the patch notes; do not invent cheat compatibility or VAC changes.
+Do not estimate any patch download size or installed game size. Those are handled separately
+by deterministic code using explicitly labeled source data. When no unknowns are stated,
+say that no extra technical details were published. Output the same JSON schema as above.'''
+
+def update_download_size(text):
+    # A generic memory/disk number is NOT the download size of this update.
+    label = r'(?:update\s+(?:download\s+)?size|patch\s+(?:download\s+)?size|download\s+size|размер\s+(?:обновления|патча|загрузки))'
+    match = re.search(label + r'\s*[:=–—-]?\s*(\d+(?:[.,]\d+)?\s*(?:GiB|MiB|GB|MB|ГБ|МБ))\b', text, re.I)
+    return match.group(1) if match else None
+
 class Analyzer:
     def __init__(self, store, session, config):
         self.store, self.session, self.config = store, session, config
 
     async def semantic(self, post):
-        key = hashlib.sha256(('v3:' + self.config.model + ':' + post['body']).encode()).hexdigest()
+        official = post.get('source_kind') == 'steam_updates'
+        key = hashlib.sha256(('v4:' + str(official) + ':' + self.config.model + ':' + post['body']).encode()).hexdigest()
         cached = self.store.rows('SELECT value FROM cache WHERE key=?', (key,))
         if cached:
             return validate_analysis(json.loads(cached[0]['value']), post['body']), False
@@ -126,7 +146,7 @@ class Analyzer:
         async with self.session.post(base + '/chat/completions',
             headers={'Authorization': 'Bearer ' + self.config.api_key},
             json={'model': self.config.model, 'temperature': .1, 'response_format': {'type': 'json_object'},
-                  'messages': [{'role': 'system', 'content': SYSTEM},
+                  'messages': [{'role': 'system', 'content': SYSTEM + (OFFICIAL_SYSTEM if official else '')},
                                {'role': 'user', 'content': json.dumps({'required_output_language':'Russian (ru), use Cyrillic in all reader-facing fields', 'title': post['title'], 'body': post['body'][:18000]}, ensure_ascii=False)}],
                   'max_tokens': 1800}) as resp:
             resp.raise_for_status()
@@ -163,7 +183,7 @@ class Analyzer:
             return 0
         if data['confidence'] == 'low':
             score = min(score, 54)
-        if (data['sensitive_claim'] or CLAIM.search(post['body'])) and not confirmations:
+        if not data.get('official_update') and (data['sensitive_claim'] or CLAIM.search(post['body'])) and not confirmations:
             score = min(score, 74)
             data['confidence'] = 'medium' if data['evidence'] >= .6 else 'low'
         feedback = self.store.rows('SELECT verdict FROM feedback WHERE category=? ORDER BY created DESC LIMIT 30', (data['category'],))
@@ -175,12 +195,13 @@ class Analyzer:
         return max(0, min(100, score))
 
     async def analyze(self, post):
-        ok, reason = prefilter(post['body'])
+        official = post.get('source_kind') == 'steam_updates'
+        ok, reason = (True, None) if official else prefilter(post['body'])
         if not ok:
             self.store.execute("UPDATE posts SET status='rejected',error=? WHERE id=?", (reason, post['id']))
             return False
         recent = self.store.rows("SELECT id,body FROM posts WHERE id<? AND status IN ('ready','research','sent','duplicate') AND discovered >= datetime('now','-7 days')", (post['id'],))
-        for other in recent:
+        for other in ([] if official else recent):
             if similarity(post['body'], other['body']) >= .88:
                 self.store.execute("UPDATE posts SET status='duplicate',duplicate_of=? WHERE id=?", (other['id'], post['id']))
                 return False
@@ -188,6 +209,10 @@ class Analyzer:
             self.store.execute("UPDATE posts SET status='needs_model',error='OPENAI_API_KEY required for paraphrasing' WHERE id=?", (post['id'],))
             return False
         data, used = await self.semantic(post)
+        if official:
+            data.update(official_update=True, category='cs2_update', relevant=True, substantial=True,
+                        event_key=post['url'], event_date=post['published'][:10] if post['published'] else None,
+                        download_size=update_download_size(post['body']))
         # Semantic dedup is conservative: specific event, same date, same category.
         for other in self.store.rows("SELECT id,analysis FROM posts WHERE id<? AND analysis IS NOT NULL AND status IN ('ready','research','sent') AND discovered >= datetime('now','-7 days')", (post['id'],)):
             od = json.loads(other['analysis'])
@@ -197,7 +222,7 @@ class Analyzer:
         confirmations = self.evidence(post, data)
         data['confirmations'] = confirmations
         score = self.score(post, data, confirmations)
-        status = 'ready' if score >= 75 else 'research' if score >= 55 else 'rejected'
+        status = 'ready' if official or score >= 75 else 'research' if score >= 55 else 'rejected'
         self.store.execute('UPDATE posts SET status=?,analysis=?,score=?,error=NULL WHERE id=?',
                            (status, json.dumps(data, ensure_ascii=False), score, post['id']))
         return used

@@ -12,7 +12,8 @@ import aiohttp
 from bs4 import BeautifulSoup
 from .models import Post
 
-KINDS = {"telegram", "forum", "rss", "github"}
+KINDS = {"telegram", "forum", "rss", "github", "steam_updates"}
+STEAM_NEWS_URL = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=30&maxlength=0&format=json&feeds=steam_community_announcements'
 
 def validate_source(kind, url):
     if kind not in KINDS:
@@ -24,6 +25,8 @@ def validate_source(kind, url):
         raise ValueError("Expected https://t.me/channel")
     if kind == "github" and (p.hostname != "github.com" or len(p.path.strip('/').split('/')) != 2):
         raise ValueError("Expected https://github.com/owner/repo")
+    if kind == 'steam_updates' and (p.hostname != 'www.counter-strike.net' or p.path.rstrip('/') != '/news/updates'):
+        raise ValueError('Official CS2 updates require https://www.counter-strike.net/news/updates')
 
 async def public_host(url):
     host = urlsplit(url).hostname
@@ -147,8 +150,44 @@ def rss_posts(xml, source):
                               time_value(value('pubDate', 'a:published', 'a:updated'))))
     return posts
 
+def steam_text(value):
+    # Steam announcement bodies use BBCode, sometimes mixed with HTML.
+    text = re.sub(r'\[url=([^\]]+)\](.*?)\[/url\]', r'\2 (\1)', value, flags=re.I | re.S)
+    text = re.sub(r'\[(?:/?p|/?list|/?h[1-6]|br|\*|/\*)\]', '\n', text, flags=re.I)
+    text = re.sub(r'\[/?(?:b|i|u|strike|quote|code|previewyoutube|img)(?:=[^\]]*)?\]', '', text, flags=re.I)
+    text = BeautifulSoup(text, 'html.parser').get_text('\n', strip=True).replace('\\[', '[')
+    return '\n'.join(line.strip() for line in text.splitlines() if line.strip())
+
+def steam_posts(payload, source):
+    appnews = payload.get('appnews', {})
+    if appnews.get('appid') != 730:
+        raise ValueError('Steam response is not for CS2')
+    posts = []
+    for item in appnews.get('newsitems', []):
+        if item.get('feedname') != 'steam_community_announcements' or item.get('appid') != 730:
+            continue
+        # Official announcements also contain tournaments/promotions; only patch notes belong here.
+        if 'patchnotes' not in item.get('tags', []) and not re.search(r'counter.strike.*update|release notes', item.get('title', ''), re.I):
+            continue
+        gid = str(item.get('gid', ''))
+        if not gid.isdigit():
+            continue
+        body = steam_text(item.get('contents', ''))
+        if not body:
+            continue
+        published = datetime.fromtimestamp(item['date'], timezone.utc).isoformat()
+        url = item.get('url', '')
+        parsed = urlsplit(url)
+        if parsed.scheme != 'https' or parsed.hostname not in {'steamstore-a.akamaihd.net', 'store.steampowered.com', 'steamcommunity.com', 'www.counter-strike.net'}:
+            continue
+        posts.append(Post(source['id'], url, item['title'], item['title'] + '\n' + body, published,
+                          ['https://www.counter-strike.net/news/updates']))
+    return posts
+
 async def collect(source, fetcher):
     kind, url = source['kind'], source['url']
+    if kind == 'steam_updates':
+        return steam_posts(await fetcher.get(STEAM_NEWS_URL, True), source)
     if kind == 'telegram':
         channel = urlsplit(url).path.strip('/').removeprefix('s/')
         posts = telegram_posts(await fetcher.get('https://t.me/s/' + channel), source)

@@ -20,4 +20,5 @@ pytest==9.1.1
 python-dotenv==1.2.4
 soupsieve==2.10
 typing_extensions==4.16.0
+tzdata==2026.5
 yarl==1.25.1

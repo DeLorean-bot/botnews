@@ -39,7 +39,7 @@ class Service:
         if self.config.api_key:
             self.store.execute("UPDATE posts SET status='pending' WHERE status='needs_model'")
         budget = self.config.llm_budget
-        posts = self.store.rows('''SELECT p.*,s.reliability,s.name AS source_name FROM posts p JOIN sources s ON p.source_id=s.id
+        posts = self.store.rows('''SELECT p.*,s.reliability,s.name AS source_name,s.kind AS source_kind FROM posts p JOIN sources s ON p.source_id=s.id
                   WHERE p.status='pending' AND p.next_retry<=? ORDER BY p.id LIMIT 100''', (time.time(),))
         for p in posts:
             if budget <= 0:
@@ -60,7 +60,7 @@ class Service:
             data = json.loads(p['analysis'])
             data['confirmations'] = self.analyzer.evidence(p, data)
             score = self.analyzer.score(p, data, data['confirmations'])
-            status = 'ready' if score >= 75 else 'research' if score >= 55 else 'rejected'
+            status = 'ready' if data.get('official_update') or score >= 75 else 'research' if score >= 55 else 'rejected'
             self.store.execute('UPDATE posts SET score=?,status=?,analysis=? WHERE id=?', (score, status, json.dumps(data, ensure_ascii=False), p['id']))
 
     async def publish(self):
@@ -71,14 +71,14 @@ class Service:
         threshold = max(90, threshold) if mode == 'critical' else threshold
         disabled = self.store.setting('disabled_categories', [])
         posts = self.store.rows('''SELECT p.*,s.name AS source_name FROM posts p JOIN sources s ON p.source_id=s.id
-                                   WHERE p.status IN ('ready','research','sent') AND p.score>=55 ORDER BY p.id LIMIT 200''')
+                                   WHERE p.status IN ('ready','research','sent') AND (p.score>=55 OR s.kind='steam_updates') ORDER BY p.id LIMIT 200''')
         for p in posts:
             data = json.loads(p['analysis'])
             if data['category'] in disabled:
                 continue
             if mode == 'research':
                 channel = self.config.research_channel
-            elif p['score'] >= threshold:
+            elif data.get('official_update') or p['score'] >= threshold:
                 channel = self.config.channel
             else:
                 channel = self.config.research_channel if p['status'] == 'research' else 0

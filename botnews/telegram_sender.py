@@ -5,6 +5,21 @@ from types import SimpleNamespace
 
 def message_text(post, data):
     esc = lambda s: html.escape(str(s))
+    if data.get('official_update'):
+        published = post.get('published')
+        if published:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            date = datetime.fromisoformat(published.replace('Z', '+00:00')).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M') + ' МСК'
+        else:
+            date = 'Дата публикации неизвестна'
+        size = data.get('download_size') or 'Valve не указала; зависит от платформы и установленной версии'
+        changes = '\n'.join('• ' + esc(f['fact'][:240]) for f in data['confirmed'][:8])
+        return '\n\n'.join([f"<b>{esc(data['title'][:220])}</b>", esc(date),
+             '<b>Размер загрузки обновления:</b> ' + esc(size), esc(data['summary'][:650]),
+             '<b>Что изменилось:</b>\n' + (changes or 'Изменения описаны в кратком пересказе выше.'),
+             '<a href="' + esc(post['url']) + '">Официальные патчноуты Valve</a>',
+             '<a href="https://www.counter-strike.net/news/updates">Обновления Counter-Strike</a>'])
     facts = '\n'.join('• ' + f['fact'] for f in data['confirmed'])
     parts = [f"<b>{esc(data['title'][:220])}</b>",
              f"Категория: {esc(data['category'])} · {post['score']}/100 · Уверенность: {esc(data['confidence'])}",

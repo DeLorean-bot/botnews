@@ -11,6 +11,12 @@ def safe(text, limit=1024):
     return discord.utils.escape_mentions(discord.utils.escape_markdown(str(text)))[:limit] or 'Не указано'
 
 def embed(post, data):
+    if data.get('official_update'):
+        result = discord.Embed(title=safe(data['title'], 256),url=post['url'],description=safe(data['summary'], 1000),color=0xE6A23C)
+        result.add_field(name='Размер загрузки обновления',value=safe(data.get('download_size') or 'Valve не указала; зависит от платформы и установленной версии'),inline=False)
+        result.add_field(name='Что изменилось',value=safe('\n'.join('• '+f['fact'] for f in data['confirmed'][:8])),inline=False)
+        result.set_footer(text=f"Valve · ID {post['id']} · Перевод и краткий пересказ")
+        return result
     priority = 'HIGH PRIORITY' if post['score'] >= 90 else 'NEWS' if post['score'] >= 75 else 'RESEARCH'
     result = discord.Embed(title=f"[{priority}] {safe(data['title'], 225)}", url=post['url'],
         description=safe(data['summary'], 1000), color=0xE74C3C if post['score'] >= 90 else 0x3498DB)

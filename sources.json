@@ -7,5 +7,6 @@
   {"name":"YouGame 1176","kind":"forum","url":"https://yougame.biz/forums/1176/","reliability":0.5},
   {"name":"YouGame 1093","kind":"forum","url":"https://yougame.biz/forums/1093/","reliability":0.5},
   {"name":"UnknownCheats reversing","kind":"forum","url":"https://www.unknowncheats.me/forum/general-programming-and-reversing/","reliability":0.65},
-  {"name":"UnknownCheats CS2 releases","kind":"forum","url":"https://www.unknowncheats.me/forum/counter-strike-2-releases/","reliability":0.6}
+  {"name":"UnknownCheats CS2 releases","kind":"forum","url":"https://www.unknowncheats.me/forum/counter-strike-2-releases/","reliability":0.6},
+  {"name":"Valve — официальные обновления CS2","kind":"steam_updates","url":"https://www.counter-strike.net/news/updates","reliability":1.0}
 ]
