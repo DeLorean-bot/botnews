@@ -24,7 +24,7 @@ from botnews.telegram_sender import message_text
 
 log = logging.getLogger(__name__)
 
-def test_message(post, analysis):
+def format_test_message(post, analysis):
     raw_date = post.get('published')
     date = (datetime.fromisoformat(raw_date.replace('Z','+00:00')).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y %H:%M') + ' МСК') if raw_date else 'неизвестна'
     return '<b>🧪 ТЕСТ — архивная публикация</b>\nИсходная дата: ' + html.escape(date) + '\n\n' + message_text(post,analysis)
@@ -102,7 +102,7 @@ async def run(args):
                 if analysis:
                     item['analysis']=analysis
                 if passed:
-                    text=test_message(current,analysis)
+                    text=format_test_message(current,analysis)
                     item['preview']=text
                     channel=int(os.getenv('TELEGRAM_CHAT_ID') or 0)
                     if args.send and not store.rows('SELECT * FROM deliveries WHERE post_id=? AND channel_id=?',(post['id'],channel)):

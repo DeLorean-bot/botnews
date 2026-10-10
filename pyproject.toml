@@ -16,3 +16,6 @@ hvh-news = "botnews.main:main"
 
 [tool.setuptools.packages.find]
 include = ["botnews*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
