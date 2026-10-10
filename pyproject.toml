@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hvh-news-monitor"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.10,<4", "beautifulsoup4>=4.12,<5", "discord.py>=2.4,<3", "python-dotenv>=1,<2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+hvh-news = "botnews.main:main"
+
+[tool.setuptools.packages.find]
+include = ["botnews*"]

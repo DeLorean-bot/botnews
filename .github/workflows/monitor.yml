@@ -1,0 +1,60 @@
+name: News monitor
+on:
+  workflow_dispatch:
+    inputs:
+      initialize:
+        description: 'Create the initial database (first run only)'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '7,37 * * * *'
+permissions:
+  contents: write
+concurrency:
+  group: news-monitor
+  cancel-in-progress: false
+jobs:
+  monitor:
+    if: vars.MONITOR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DATABASE_PATH: data/news.sqlite3
+      STATE_ENCRYPTION_KEY: ${{ secrets.STATE_ENCRYPTION_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+      TELEGRAM_THREAD_ID: ${{ vars.TELEGRAM_THREAD_ID }}
+      OPENAI_API_KEY: ${{ secrets.LLM_API_KEY }}
+      OPENAI_MODEL: ${{ vars.LLM_MODEL || 'llama-3.3-70b-versatile' }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.groq.com/openai/v1' }}
+      MAX_LLM_PER_CYCLE: '10'
+      MODE: high_signal
+      MIN_SCORE: '75'
+      BACKFILL: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+      - run: pip install -r requirements-lock.txt
+      - run: pip install --no-deps -e .
+      - name: Check configuration
+        run: |
+          python -c "import os; required=['STATE_ENCRYPTION_KEY','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','OPENAI_API_KEY']; missing=[x for x in required if not os.getenv(x)]; assert not missing, 'Missing settings: '+', '.join(missing)"
+      - name: Restore database
+        id: restore
+        env:
+          INITIALIZE: ${{ inputs.initialize || false }}
+        run: |
+          if [ "$INITIALIZE" = "true" ]; then
+            python scripts/runner_state.py restore --initialize
+          else
+            python scripts/runner_state.py restore
+          fi
+      - name: Collect, analyze and publish
+        run: python -m botnews.main --publish-once
+      - name: Save database
+        if: always() && steps.restore.outcome == 'success'
+        run: python scripts/runner_state.py save
