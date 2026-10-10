@@ -49,7 +49,7 @@ tests/                     ключевые проверки
 
 ## Бесплатный запуск через GitHub Actions
 
-Workflow `.github/workflows/monitor.yml` проверяет источники дважды в час, на 7-й и 37-й минутах. Это периодическая задача, не непрерывный сервер. В публичном репозитории стандартный runner бесплатен. Плановые запуски могут задерживаться или пропускаться; после 60 дней без активности публичного репозитория расписание может отключиться. [Условия](https://docs.github.com/en/actions/concepts/billing-and-usage), [ограничения расписания](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
+Workflow `.github/workflows/monitor.yml` проверяет источники каждые 5 минут (2, 7, 12, …, 57). Это минимальный интервал GitHub Actions, а не непрерывный сервер. В публичном репозитории стандартный runner бесплатен. Плановые запуски могут задерживаться или пропускаться; после 60 дней без активности публичного репозитория расписание может отключиться. [Условия](https://docs.github.com/en/actions/concepts/billing-and-usage), [ограничения расписания](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
 
 Для модели можно использовать бесплатный тариф Groq в рамках квот. Обязателен собственный ключ; не включайте платный тариф, если нужен нулевой бюджет. Совместимость API проверена по документации, реальный пересказ требует ключа. [Получить ключ](https://console.groq.com/keys), [лимиты](https://console.groq.com/docs/rate-limits), [API](https://console.groq.com/docs/openai). OpenAI также поддерживается, но его API обычно платный.
 
